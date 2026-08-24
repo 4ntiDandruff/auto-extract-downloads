@@ -1,0 +1,23 @@
+# ==============================================================================
+# SERVICE: AUTO-EXTRACT SYSTEMD USER UNIT
+# LOKASI: ~/.config/systemd/user/auto-extract.service
+# FUNGSI: Menjaga script auto-extract agar selalu standby otomatis saat login
+# CARA KONTROL MANUAL:
+#   systemctl --user status auto-extract.service
+#   systemctl --user stop auto-extract.service
+#   systemctl --user start auto-extract.service
+# Atau gunakan perintah cepat: 'auto-extract on|off|status'
+# ==============================================================================
+
+[Unit]
+Description=Auto Extract Archives in Downloads Folder
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/auto-extract-downloads.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# COMMAND: SAKLAR CEPAT & BUKU PETUNJUK AUTO-EXTRACT
+# LOKASI: /usr/local/bin/auto-extract
+# ==============================================================================
+
+USER_ID=$(id -u)
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$USER_ID/bus"
+
+case "$1" in
+    on|start)
+        systemctl --user enable --now auto-extract.service
+        echo -e "\033[1;32m[ON]\033[0m Sensor Auto-Extract Downloads AKTIF."
+        notify-send -a "Auto Extract" -i package-x-generic "Auto Extract ON" "Sensor folder Downloads sekarang AKTIF." 2>/dev/null
+        ;;
+    off|stop)
+        systemctl --user disable --now auto-extract.service
+        echo -e "\033[1;31m[OFF]\033[0m Sensor Auto-Extract Downloads DIMATIKAN."
+        notify-send -a "Auto Extract" -i package-x-generic "Auto Extract OFF" "Sensor folder Downloads sekarang DIMATIKAN." 2>/dev/null
+        ;;
+    status)
+        if systemctl --user is-active --quiet auto-extract.service; then
+            echo -e "\033[1;32m● AKTIF (RUNNING)\033[0m - Sensor siap jaga di ~/Downloads"
+        else
+            echo -e "\033[1;31m○ MATI (STOPPED)\033[0m - Fitur auto-extract sedang nonaktif."
+        fi
+        ;;
+    *)
+        echo "======================================================================"
+        echo "           PANDUAN SISTEM OTOMATISASI AUTO-EXTRACT DOWNLOADS         "
+        echo "======================================================================"
+        echo "Fungsi: Otomatis membongkar arsip (.zip/.rar/.7z) saat selesai download."
+        echo ""
+        echo "DAFTAR 6 SEKRING PENGAMAN AKTIF:"
+        echo "  1. [Anti-Muntah]       : Skip folder yang baru saja Anda kompres sendiri."
+        echo "  2. [Limit 10 MB]       : File > 10 MB diskip (tidak bikin lag)."
+        echo "  3. [Multi-Part Guard]  : Hanya ekstrak part1, abaikan part2/3/dst."
+        echo "  4. [Disk Undervoltage] : Batal ekstrak jika sisa storage < 1 GB."
+        echo "  5. [Password Guard]    : Deteksi file berpassword -> minta ekstrak manual."
+        echo "  6. [Auto-Rollback]     : Hapus folder kosong jika file korup/gagal."
+        echo ""
+        echo "PERINTAH SAKLAR TERMINAL:"
+        echo "  auto-extract status    -> Cek kondisi sensor (aktif / mati)"
+        echo "  auto-extract on        -> Menyalakan sensor"
+        echo "  auto-extract off       -> Mematikan sementara"
+        echo ""
+        echo "LOKASI FILE TEKNIS:"
+        echo "  Worker Engine  : ~/.local/bin/auto-extract-downloads.sh"
+        echo "  Systemd Unit   : ~/.config/systemd/user/auto-extract.service"
+        echo "  Command Saklar : /usr/local/bin/auto-extract"
+        echo "======================================================================"
+        ;;
+esac
