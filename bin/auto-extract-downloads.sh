@@ -6,17 +6,19 @@
 # ==============================================================================
 # FUNGSI & LOGIKA KERJA:
 # Mengawasi folder ~/Downloads BESERTA SELURUH SUBFOLDER (rekursif -r).
-# Otomatis mengekstrak file .zip, .rar, .7z, .tar.gz di folder mana pun dalam Downloads.
+# Otomatis mengekstrak file arsip murni (.zip, .rar, .7z, .tar.gz, .tar.xz, .tgz).
 #
-# DAFTAR 8 SEKRING PENGAMAN:
-# 1. Sekring Anti-Muntah (Self-Compress Guard) -> Skip jika folder tujuan sudah ada & ada isinya.
+# DAFTAR SEKRING PENGAMAN:
+# 1. Sekring Anti-Muntah (Self-Compress Guard) -> Skip jika folder tujuan sudah ada isinya.
 # 2. Sekring Limit Ukuran (10 MB Guard) -> Skip jika file > 10 MB.
 # 3. Sekring Multi-Part Archive -> Hanya trigger di part1, part 2/3/dst diskip.
 # 4. Sekring Ruang Disk Kritis -> Batal ekstrak jika sisa storage < 1 GB.
 # 5. Sekring Password Archive -> Skip file terenkripsi & notifikasi ekstrak manual.
 # 6. Sekring Auto-Rollback -> Hapus folder kosong jika file korup/gagal ekstrak.
 # 7. Sekring Max Depth -> Maksimal kedalaman 4 level subfolder.
-# 8. Sekring Exclude Hidden/Dev Folders -> Mengabaikan folder .git/, node_modules/, .cache/, .venv/, dll.
+# 8. Sekring Exclude Dev Folders -> Mengabaikan folder .git/, node_modules/, .cache/, dll.
+# 9. Sekring Proteksi Disk Image / Raw Firmware:
+#    - Format .iso, .img, .bin, .rom, .apk, .deb 100% AMAN (TIDAK akan diekstrak).
 # ==============================================================================
 
 WATCH_DIR="$HOME/Downloads"
@@ -40,12 +42,18 @@ inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/nu
         continue
     fi
 
-    # SEKRING 8: Exclude spesifik folder sistem/development (misal .git, node_modules, .cache, .venv)
+    # SEKRING 8: Exclude folder sistem / development
     if [[ "$filepath" =~ /(node_modules|\.git|\.venv|venv|\.cache|\.local|\.idea|\.vscode)/ ]]; then
         continue
     fi
 
-    # SEKRING 7: Batasi kedalaman subfolder agar tidak looping tak berhingga
+    # SEKRING 9: Explicit Exclude untuk Disk Image / Firmware / Raw Binary
+    # File .iso, .img, .bin, .rom, .apk, .deb sengaja di-skip agar siap dipakai Ventoy / Flasher
+    if [[ "$lower_filename" == *.iso || "$lower_filename" == *.img || "$lower_filename" == *.bin || "$lower_filename" == *.rom || "$lower_filename" == *.apk || "$lower_filename" == *.deb ]]; then
+        continue
+    fi
+
+    # SEKRING 7: Batasi kedalaman subfolder
     rel_path="${parent_dir#$WATCH_DIR}"
     depth=$(awk -F/ '{print NF-1}' <<< "$rel_path")
     if [ "$depth" -gt "$MAX_DEPTH" ]; then
