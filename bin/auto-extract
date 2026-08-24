@@ -20,7 +20,7 @@ case "$1" in
         ;;
     status)
         if systemctl --user is-active --quiet auto-extract.service; then
-            echo -e "\033[1;32m● AKTIF (RUNNING)\033[0m - Sensor siap jaga di ~/Downloads"
+            echo -e "\033[1;32m● AKTIF (RUNNING)\033[0m - Sensor siap jaga di ~/Downloads (Rekursif)"
         else
             echo -e "\033[1;31m○ MATI (STOPPED)\033[0m - Fitur auto-extract sedang nonaktif."
         fi
@@ -31,13 +31,16 @@ case "$1" in
         echo "======================================================================"
         echo "Fungsi: Otomatis membongkar arsip (.zip/.rar/.7z) saat selesai download."
         echo ""
-        echo "DAFTAR 6 SEKRING PENGAMAN AKTIF:"
+        echo "DAFTAR 9 SEKRING PENGAMAN AKTIF:"
         echo "  1. [Anti-Muntah]       : Skip folder yang baru saja Anda kompres sendiri."
         echo "  2. [Limit 10 MB]       : File > 10 MB diskip (tidak bikin lag)."
         echo "  3. [Multi-Part Guard]  : Hanya ekstrak part1, abaikan part2/3/dst."
         echo "  4. [Disk Undervoltage] : Batal ekstrak jika sisa storage < 1 GB."
         echo "  5. [Password Guard]    : Deteksi file berpassword -> minta ekstrak manual."
         echo "  6. [Auto-Rollback]     : Hapus folder kosong jika file korup/gagal."
+        echo "  7. [Max Depth Guard]   : Batasi kedalaman subfolder maksimal 4 level."
+        echo "  8. [Exclude Dev Folders: Abaikan .git/, node_modules/, .cache/, .venv/."
+        echo "  9. [Image & Container] : Proteksi ISO, BIN, ROM, VDI, TAR Docker, dll."
         echo ""
         echo "PERINTAH SAKLAR TERMINAL:"
         echo "  auto-extract status    -> Cek kondisi sensor (aktif / mati)"
