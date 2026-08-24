@@ -1,11 +1,45 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# COMMAND: SAKLAR CEPAT & BUKU PETUNJUK AUTO-EXTRACT
+# COMMAND: SAKLAR CEPAT & PENGATURAN PARAMETER AUTO-EXTRACT
 # LOKASI: /usr/local/bin/auto-extract
 # ==============================================================================
 
 USER_ID=$(id -u)
+USER_HOME=$(eval echo "~$USER")
+CONFIG_FILE="$USER_HOME/.config/auto-extract.conf"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$USER_ID/bus"
+
+# Helper baca nilai config
+get_config() {
+    local key="$1"
+    local default="$2"
+    if [ -f "$CONFIG_FILE" ]; then
+        local val
+        val=$(grep -E "^${key}=" "$CONFIG_FILE" | cut -d'=' -f2)
+        echo "${val:-$default}"
+    else
+        echo "$default"
+    fi
+}
+
+# Helper tulis nilai config
+set_config() {
+    local key="$1"
+    local val="$2"
+    mkdir -p "$USER_HOME/.config"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        cat << EOF > "$CONFIG_FILE"
+MAX_SIZE_MB=10
+MIN_DISK_FREE_GB=1
+MAX_DEPTH=4
+EOF
+    fi
+    if grep -q "^${key}=" "$CONFIG_FILE"; then
+        sed -i "s/^${key}=.*/${key}=${val}/" "$CONFIG_FILE"
+    else
+        echo "${key}=${val}" >> "$CONFIG_FILE"
+    fi
+}
 
 case "$1" in
     on|start)
@@ -18,36 +52,71 @@ case "$1" in
         echo -e "\033[1;31m[OFF]\033[0m Sensor Auto-Extract Downloads DIMATIKAN."
         notify-send -a "Auto Extract" -i package-x-generic "Auto Extract OFF" "Sensor folder Downloads sekarang DIMATIKAN." 2>/dev/null
         ;;
+    limit)
+        if [ -n "$2" ]; then
+            # Hapus suffix MB/M jika user mengetiknya (misal 50MB -> 50)
+            val="${2//[a-zA-Z]/}"
+            if [[ "$val" =~ ^[0-9]+$ ]] && [ "$val" -gt 0 ]; then
+                set_config "MAX_SIZE_MB" "$val"
+                systemctl --user restart auto-extract.service
+                echo -e "\033[1;32m[SUKSES]\033[0m Batas ukuran file berhasil diubah menjadi: \033[1;33m${val} MB\033[0m"
+                notify-send -a "Auto Extract" -i dialog-information "Batas Ukuran Diperbarui" "Batas auto-extract sekarang: ${val} MB" 2>/dev/null
+            else
+                echo -e "\033[1;31m[ERROR]\033[0m Nilai limit harus angka positif (contoh: auto-extract limit 50)"
+            fi
+        else
+            current_limit=$(get_config "MAX_SIZE_MB" "10")
+            echo -e "Batas ukuran file saat ini: \033[1;33m${current_limit} MB\033[0m (Ubah dengan: auto-extract limit <angka_MB>)"
+        fi
+        ;;
+    depth)
+        if [ -n "$2" ]; then
+            val="$2"
+            if [[ "$val" =~ ^[0-9]+$ ]] && [ "$val" -ge 1 ]; then
+                set_config "MAX_DEPTH" "$val"
+                systemctl --user restart auto-extract.service
+                echo -e "\033[1;32m[SUKSES]\033[0m Batas kedalaman subfolder berhasil diubah menjadi: \033[1;33m${val} Level\033[0m"
+                notify-send -a "Auto Extract" -i dialog-information "Kedalaman Subfolder Diperbarui" "Batas kedalaman sekarang: ${val} Level" 2>/dev/null
+            else
+                echo -e "\033[1;31m[ERROR]\033[0m Nilai depth harus angka >= 1 (contoh: auto-extract depth 3)"
+            fi
+        else
+            current_depth=$(get_config "MAX_DEPTH" "4")
+            echo -e "Batas kedalaman subfolder saat ini: \033[1;33m${current_depth} Level\033[0m (Ubah dengan: auto-extract depth <angka>)"
+        fi
+        ;;
     status)
+        cur_limit=$(get_config "MAX_SIZE_MB" "10")
+        cur_depth=$(get_config "MAX_DEPTH" "4")
         if systemctl --user is-active --quiet auto-extract.service; then
             echo -e "\033[1;32m● AKTIF (RUNNING)\033[0m - Sensor siap jaga di ~/Downloads (Rekursif)"
         else
             echo -e "\033[1;31m○ MATI (STOPPED)\033[0m - Fitur auto-extract sedang nonaktif."
         fi
+        echo -e "  - Batas Ukuran File : \033[1;33m${cur_limit} MB\033[0m"
+        echo -e "  - Kedalaman Folder  : \033[1;33m${cur_depth} Level\033[0m"
         ;;
     *)
+        cur_limit=$(get_config "MAX_SIZE_MB" "10")
+        cur_depth=$(get_config "MAX_DEPTH" "4")
         echo "======================================================================"
         echo "           PANDUAN SISTEM OTOMATISASI AUTO-EXTRACT DOWNLOADS         "
         echo "======================================================================"
         echo "Fungsi: Otomatis membongkar arsip (.zip/.rar/.7z) saat selesai download."
         echo ""
-        echo "DAFTAR 9 SEKRING PENGAMAN AKTIF:"
-        echo "  1. [Anti-Muntah]       : Skip folder yang baru saja Anda kompres sendiri."
-        echo "  2. [Limit 10 MB]       : File > 10 MB diskip (tidak bikin lag)."
-        echo "  3. [Multi-Part Guard]  : Hanya ekstrak part1, abaikan part2/3/dst."
-        echo "  4. [Disk Undervoltage] : Batal ekstrak jika sisa storage < 1 GB."
-        echo "  5. [Password Guard]    : Deteksi file berpassword -> minta ekstrak manual."
-        echo "  6. [Auto-Rollback]     : Hapus folder kosong jika file korup/gagal."
-        echo "  7. [Max Depth Guard]   : Batasi kedalaman subfolder maksimal 4 level."
-        echo "  8. [Exclude Dev Folders: Abaikan .git/, node_modules/, .cache/, .venv/."
-        echo "  9. [Image & Container] : Proteksi ISO, BIN, ROM, VDI, TAR Docker, dll."
+        echo "STATUS KONFIGURASI SAAT INI:"
+        echo "  - Batas Ukuran Maks : ${cur_limit} MB"
+        echo "  - Kedalaman Subfolder: ${cur_depth} Level"
         echo ""
-        echo "PERINTAH SAKLAR TERMINAL:"
-        echo "  auto-extract status    -> Cek kondisi sensor (aktif / mati)"
-        echo "  auto-extract on        -> Menyalakan sensor"
-        echo "  auto-extract off       -> Mematikan sementara"
+        echo "PERINTAH SAKLAR & PENGATURAN PARAMETER:"
+        echo "  auto-extract status        -> Cek status aktif & parameter terkini"
+        echo "  auto-extract limit <MB>    -> Atur batas ukuran (contoh: auto-extract limit 50)"
+        echo "  auto-extract depth <N>     -> Atur batas subfolder (contoh: auto-extract depth 3)"
+        echo "  auto-extract on            -> Menyalakan sensor"
+        echo "  auto-extract off           -> Mematikan sementara"
         echo ""
         echo "LOKASI FILE TEKNIS:"
+        echo "  Config File    : ~/.config/auto-extract.conf"
         echo "  Worker Engine  : ~/.local/bin/auto-extract-downloads.sh"
         echo "  Systemd Unit   : ~/.config/systemd/user/auto-extract.service"
         echo "  Command Saklar : /usr/local/bin/auto-extract"

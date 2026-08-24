@@ -10,22 +10,34 @@
 #
 # DAFTAR SEKRING PENGAMAN:
 # 1. Sekring Anti-Muntah (Self-Compress Guard) -> Skip jika folder tujuan sudah ada isinya.
-# 2. Sekring Limit Ukuran (10 MB Guard) -> Skip jika file > 10 MB.
-# 3. Sekring Multi-Part Archive -> Hanya trigger di part1, part 2/3/dst diskip.
-# 4. Sekring Ruang Disk Kritis -> Batal ekstrak jika sisa storage < 1 GB.
-# 5. Sekring Password Archive -> Skip file terenkripsi & notifikasi ekstrak manual.
-# 6. Sekring Auto-Rollback -> Hapus folder kosong jika file korup/gagal ekstrak.
-# 7. Sekring Max Depth -> Maksimal kedalaman 4 level subfolder.
-# 8. Sekring Exclude Dev Folders -> Mengabaikan folder .git/, node_modules/, .cache/, dll.
-# 9. Sekring Proteksi Disk Image / Firmware / Virtual Disks / Container Images:
-#    - .iso, .img, .bin, .rom, .apk, .deb, .vdi, .qcow2, .vmdk, .vhdx, .vhd,
-#      .oci, .tar (bare docker export), .sif, .flatpak, .snap, .appimage 100% AMAN.
+# 2. Sekring Limit Ukuran (Dynamic Config)     -> Skip jika file > MAX_SIZE_MB.
+# 3. Sekring Multi-Part Archive                -> Hanya trigger di part1, part 2/3/dst diskip.
+# 4. Sekring Ruang Disk Kritis                 -> Batal ekstrak jika sisa storage < MIN_DISK_FREE_GB.
+# 5. Sekring Password Archive                  -> Skip file terenkripsi & notifikasi ekstrak manual.
+# 6. Sekring Auto-Rollback                     -> Hapus folder kosong jika file korup/gagal ekstrak.
+# 7. Sekring Max Depth (Dynamic Config)        -> Maksimal kedalaman subfolder.
+# 8. Sekring Exclude Dev Folders               -> Mengabaikan folder .git/, node_modules/, .cache/, dll.
+# 9. Sekring Proteksi Disk Image & Container   -> .iso, .img, .bin, .rom, .apk, .deb, .vdi, .tar Docker, dll.
 # ==============================================================================
 
 WATCH_DIR="$HOME/Downloads"
-MAX_SIZE_BYTES=10485760 # 10 MB
-MIN_DISK_FREE_GB=1      # Minimal sisa storage 1 GB
-MAX_DEPTH=4             # Maksimal kedalaman subfolder
+CONFIG_FILE="$HOME/.config/auto-extract.conf"
+
+# Nilai Default jika config belum ada
+MAX_SIZE_MB=10
+MIN_DISK_FREE_GB=1
+MAX_DEPTH=4
+
+# Muat konfigurasi dinamis jika ada
+if [ -f "$CONFIG_FILE" ]; then
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+fi
+
+# Hitung bytes dari MB
+MAX_SIZE_BYTES=$(( ${MAX_SIZE_MB:-10} * 1024 * 1024 ))
+MIN_DISK_FREE_GB=${MIN_DISK_FREE_GB:-1}
+MAX_DEPTH=${MAX_DEPTH:-4}
 
 mkdir -p "$WATCH_DIR"
 
@@ -33,6 +45,12 @@ mkdir -p "$WATCH_DIR"
 inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/null | while read -r filepath; do
     # Abaikan jika file sudah tidak ada
     [ -f "$filepath" ] || continue
+
+    # Muat ulang config dinamis jika berubah saat runtime
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+        MAX_SIZE_BYTES=$(( ${MAX_SIZE_MB:-10} * 1024 * 1024 ))
+    fi
 
     filename=$(basename "$filepath")
     parent_dir=$(dirname "$filepath")
@@ -53,10 +71,10 @@ inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/nu
         continue
     fi
 
-    # SEKRING 7: Batasi kedalaman subfolder
+    # SEKRING 7: Batasi kedalaman subfolder (Dynamic)
     rel_path="${parent_dir#$WATCH_DIR}"
     depth=$(awk -F/ '{print NF-1}' <<< "$rel_path")
-    if [ "$depth" -gt "$MAX_DEPTH" ]; then
+    if [ "$depth" -gt "${MAX_DEPTH:-4}" ]; then
         continue
     fi
 
@@ -93,17 +111,17 @@ inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/nu
             continue
         fi
         
-        # SEKRING 2: Limit Ukuran File 10 MB
+        # SEKRING 2: Limit Ukuran File (Dynamic)
         filesize=$(stat -c%s "$filepath" 2>/dev/null || echo 0)
         if [ "$filesize" -gt "$MAX_SIZE_BYTES" ]; then
-            notify-send -a "Auto Extract" -i dialog-information "Auto Extract Dilewati (> 10 MB)" "$filename berukuran > 10 MB. Ekstrak manual jika diperlukan." 2>/dev/null
+            notify-send -a "Auto Extract" -i dialog-information "Auto Extract Dilewati (> ${MAX_SIZE_MB} MB)" "$filename berukuran > ${MAX_SIZE_MB} MB. Ekstrak manual jika diperlukan." 2>/dev/null
             continue
         fi
 
-        # SEKRING 4: Proteksi Ruang Disk Kritis (< 1 GB)
+        # SEKRING 4: Proteksi Ruang Disk Kritis (< MIN_DISK_FREE_GB)
         avail_gb=$(df -BG "$WATCH_DIR" | awk 'NR==2 {print $4}' | tr -d 'G')
-        if [ "${avail_gb:-0}" -lt "$MIN_DISK_FREE_GB" ]; then
-            notify-send -a "Auto Extract" -i dialog-warning "Auto Extract Dibatalkan" "Sisa ruang disk kritis (< 1 GB). Kosongkan disk terlebih dahulu." 2>/dev/null
+        if [ "${avail_gb:-0}" -lt "${MIN_DISK_FREE_GB:-1}" ]; then
+            notify-send -a "Auto Extract" -i dialog-warning "Auto Extract Dibatalkan" "Sisa ruang disk kritis (< ${MIN_DISK_FREE_GB} GB). Kosongkan disk terlebih dahulu." 2>/dev/null
             continue
         fi
 
