@@ -9,7 +9,7 @@
 # Otomatis mengekstrak file arsip murni (.zip, .rar, .7z, .tar.gz, .tar.xz, .tgz).
 #
 # DAFTAR SEKRING PENGAMAN:
-# 1. Sekring Anti-Muntah (Self-Compress Guard) -> Skip jika folder tujuan sudah ada isinya.
+# 1. Sekring Self-Compress Loop Guard (Self-Compress Guard) -> Skip jika folder tujuan sudah ada isinya.
 # 2. Sekring Limit Ukuran (Dynamic Config)     -> Skip jika file > MAX_SIZE_MB.
 # 3. Sekring Multi-Part Archive                -> Hanya trigger di part1, part 2/3/dst diskip.
 # 4. Sekring Ruang Disk Kritis                 -> Batal ekstrak jika sisa storage < MIN_DISK_FREE_GB.
@@ -106,7 +106,7 @@ inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/nu
         # Ekstrak tepat di folder tempat file tersebut berada
         target_dir="$parent_dir/$base_name"
         
-        # SEKRING 1: Anti-Muntah
+        # SEKRING 1: Self-Compress Loop Guard
         if [ -d "$target_dir" ] && [ "$(ls -A "$target_dir" 2>/dev/null)" ]; then
             continue
         fi
