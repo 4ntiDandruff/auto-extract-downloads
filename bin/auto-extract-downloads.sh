@@ -1,54 +1,57 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# SCRIPT: AUTO-EXTRACT DOWNLOADS WORKER (FULL CIRCUIT PROTECTION)
+# SCRIPT: AUTO-EXTRACT DOWNLOADS WORKER (RECURSIVE SUBFOLDER + FULL PROTECTION)
 # LOKASI: ~/.local/bin/auto-extract-downloads.sh
 # DIBUAT: 2026-08-25 untuk Cak Hizam (Node: hizam)
 # ==============================================================================
 # FUNGSI & LOGIKA KERJA:
-# Mengawasi folder ~/Downloads via kernel interrupt inotify (0% CPU idle).
-# Otomatis mengekstrak file .zip, .rar, .7z, .tar.gz begitu selesai didownload.
+# Mengawasi folder ~/Downloads BESERTA SELURUH SUBFOLDER (rekursif -r).
+# Otomatis mengekstrak file .zip, .rar, .7z, .tar.gz di folder mana pun dalam Downloads.
 #
-# DAFTAR 6 SEKRING PENGAMAN (SAFETY FUSES):
-# 1. Sekring Anti-Muntah (Self-Compress Guard):
-#    - Jika folder sudah ada & berisi, proses ekstrak diskip (mencegah loop saat kompres sendiri).
-# 2. Sekring Limit Ukuran (10 MB Guard):
-#    - File > 10 MB tidak diekstrak otomatis agar hemat resource dan tidak bikin lag.
-# 3. Sekring Multi-Part Archive:
-#    - Hanya trigger pada .part1 / .001. Part lanjutan (.part2, .part3, dst) otomatis diskip.
-# 4. Sekring Ruang Disk Kritis (Low Storage Protection):
-#    - Jika sisa storage partisi < 1 GB, ekstrak otomatis dibatalkan demi keamanan OS.
-# 5. Sekring Password Archive (Encrypted Guard):
-#    - File arsip berpassword dideteksi via lsar/7z, diskip, dan diberi notifikasi ekstrak manual.
-# 6. Sekring Rollback Folder Gagal (Clean-Break on Error):
-#    - Jika ekstrak gagal / file korup, folder kosong yang terlanjur dibuat langsung dihapus bersih.
-#
-# CARA KONTROL SAKLAR CEPAT:
-#   auto-extract status -> Cek status apakah sensor aktif
-#   auto-extract off    -> Matikan sementara
-#   auto-extract on     -> Hidupkan kembali
+# DAFTAR SEKRING PENGAMAN:
+# 1. Sekring Anti-Muntah (Self-Compress Guard) -> Skip jika folder tujuan sudah ada & ada isinya.
+# 2. Sekring Limit Ukuran (10 MB Guard) -> Skip jika file > 10 MB.
+# 3. Sekring Multi-Part Archive -> Hanya trigger di part1, part 2/3/dst diskip.
+# 4. Sekring Ruang Disk Kritis -> Batal ekstrak jika sisa storage < 1 GB.
+# 5. Sekring Password Archive -> Skip file terenkripsi & notifikasi ekstrak manual.
+# 6. Sekring Auto-Rollback -> Hapus folder kosong jika file korup/gagal ekstrak.
+# 7. Sekring Max Depth (Anti-Loop Rekursif) -> Maksimal 4 level subfolder dari Downloads.
 # ==============================================================================
 
 WATCH_DIR="$HOME/Downloads"
-MAX_SIZE_BYTES=10485760 # Batas maksimum 10 MB (10 * 1024 * 1024 bytes)
+MAX_SIZE_BYTES=10485760 # 10 MB
 MIN_DISK_FREE_GB=1      # Minimal sisa storage 1 GB
+MAX_DEPTH=4             # Maksimal kedalaman subfolder
 
 mkdir -p "$WATCH_DIR"
 
-inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" | while read -r filepath; do
+# Parameter -r mengaktifkan pengawasan rekursif ke seluruh anak folder
+inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/null | while read -r filepath; do
+    # Abaikan jika file sudah tidak ada
+    [ -f "$filepath" ] || continue
+
     filename=$(basename "$filepath")
+    parent_dir=$(dirname "$filepath")
     lower_filename="${filename,,}"
     
-    # Abaikan file parsial/sementara browser/downloader/kompresor
+    # Abaikan file parsial/sementara
     if [[ "$lower_filename" == *.crdownload || "$lower_filename" == *.tmp || "$lower_filename" == *.part || "$lower_filename" == *.~tmp || "$lower_filename" == .*.swp ]]; then
         continue
     fi
 
-    # SEKRING 3: Abaikan multi-part lanjutan (part 2, 3, dst)
+    # SEKRING 7: Batasi kedalaman subfolder agar tidak looping tak berhingga
+    rel_path="${parent_dir#$WATCH_DIR}"
+    depth=$(awk -F/ '{print NF-1}' <<< "$rel_path")
+    if [ "$depth" -gt "$MAX_DEPTH" ]; then
+        continue
+    fi
+
+    # SEKRING 3: Abaikan multi-part lanjutan
     if [[ "$lower_filename" =~ \.part0*[2-9][0-9]*\.rar$ ||           "$lower_filename" =~ \.r[0-9]{2,}$ ||           "$lower_filename" =~ \.z[0-9]{2,}$ ||           "$lower_filename" =~ \.(7z|zip)\.0*[2-9][0-9]*$ ||           "$lower_filename" =~ \.0*[2-9][0-9]*$ ]]; then
         continue
     fi
     
-    # Deteksi ekstensi arsip
+    # Deteksi format arsip
     is_archive=false
     base_name=""
 
@@ -67,8 +70,9 @@ inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" | while read
         base_name="${filename%.*}"
     fi
 
-    if [ "$is_archive" = true ] && [ -f "$filepath" ]; then
-        target_dir="$WATCH_DIR/$base_name"
+    if [ "$is_archive" = true ]; then
+        # Ekstrak tepat di folder tempat file tersebut berada
+        target_dir="$parent_dir/$base_name"
         
         # SEKRING 1: Anti-Muntah
         if [ -d "$target_dir" ] && [ "$(ls -A "$target_dir" 2>/dev/null)" ]; then
@@ -90,7 +94,6 @@ inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" | while read
         fi
 
         # SEKRING 5: Proteksi Arsip Berpassword
-        # lsar / 7z cek proteksi enkripsi header/data
         if lsar "$filepath" 2>&1 | grep -iq "password" || 7z l -slt "$filepath" 2>&1 | grep -iq "Encrypted = +"; then
             notify-send -a "Auto Extract" -i dialog-password "Arsip Terkunci Password" "$filename butuh password. Silakan ekstrak manual melalui Ark / Dolphin." 2>/dev/null
             continue
@@ -105,7 +108,6 @@ inotifywait -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" | while read
         if [ $exit_code -eq 0 ] && [ "$(ls -A "$target_dir" 2>/dev/null)" ]; then
             notify-send -a "Auto Extract" -i package-x-generic "Auto Extract Selesai" "$filename berhasil diekstrak ke: $base_name" 2>/dev/null
         else
-            # Bersihkan folder jika proses ekstrak gagal / file korup
             rm -rf "$target_dir"
             notify-send -a "Auto Extract" -i dialog-error "Auto Extract Gagal" "File $filename korup atau tidak dapat diekstrak." 2>/dev/null
         fi
