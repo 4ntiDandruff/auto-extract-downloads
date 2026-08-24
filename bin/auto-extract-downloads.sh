@@ -17,8 +17,8 @@
 # 6. Sekring Auto-Rollback -> Hapus folder kosong jika file korup/gagal ekstrak.
 # 7. Sekring Max Depth -> Maksimal kedalaman 4 level subfolder.
 # 8. Sekring Exclude Dev Folders -> Mengabaikan folder .git/, node_modules/, .cache/, dll.
-# 9. Sekring Proteksi Disk Image / Raw Firmware:
-#    - Format .iso, .img, .bin, .rom, .apk, .deb 100% AMAN (TIDAK akan diekstrak).
+# 9. Sekring Proteksi Disk Image / Raw Firmware / Virtual Disks:
+#    - Format .iso, .img, .bin, .rom, .apk, .deb, .vdi, .qcow2, .vmdk, .vhdx, .vhd 100% AMAN.
 # ==============================================================================
 
 WATCH_DIR="$HOME/Downloads"
@@ -47,9 +47,8 @@ inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/nu
         continue
     fi
 
-    # SEKRING 9: Explicit Exclude untuk Disk Image / Firmware / Raw Binary
-    # File .iso, .img, .bin, .rom, .apk, .deb sengaja di-skip agar siap dipakai Ventoy / Flasher
-    if [[ "$lower_filename" == *.iso || "$lower_filename" == *.img || "$lower_filename" == *.bin || "$lower_filename" == *.rom || "$lower_filename" == *.apk || "$lower_filename" == *.deb ]]; then
+    # SEKRING 9: Explicit Exclude untuk Disk Image / Firmware / Raw Binary / Virtual Disks
+    if [[ "$lower_filename" == *.iso || "$lower_filename" == *.img || "$lower_filename" == *.bin || "$lower_filename" == *.rom || "$lower_filename" == *.apk || "$lower_filename" == *.deb || "$lower_filename" == *.vdi || "$lower_filename" == *.qcow2 || "$lower_filename" == *.vmdk || "$lower_filename" == *.vhdx || "$lower_filename" == *.vhd ]]; then
         continue
     fi
 
