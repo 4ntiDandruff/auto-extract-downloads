@@ -8,14 +8,15 @@
 # Mengawasi folder ~/Downloads BESERTA SELURUH SUBFOLDER (rekursif -r).
 # Otomatis mengekstrak file .zip, .rar, .7z, .tar.gz di folder mana pun dalam Downloads.
 #
-# DAFTAR SEKRING PENGAMAN:
+# DAFTAR 8 SEKRING PENGAMAN:
 # 1. Sekring Anti-Muntah (Self-Compress Guard) -> Skip jika folder tujuan sudah ada & ada isinya.
 # 2. Sekring Limit Ukuran (10 MB Guard) -> Skip jika file > 10 MB.
 # 3. Sekring Multi-Part Archive -> Hanya trigger di part1, part 2/3/dst diskip.
 # 4. Sekring Ruang Disk Kritis -> Batal ekstrak jika sisa storage < 1 GB.
 # 5. Sekring Password Archive -> Skip file terenkripsi & notifikasi ekstrak manual.
 # 6. Sekring Auto-Rollback -> Hapus folder kosong jika file korup/gagal ekstrak.
-# 7. Sekring Max Depth (Anti-Loop Rekursif) -> Maksimal 4 level subfolder dari Downloads.
+# 7. Sekring Max Depth -> Maksimal kedalaman 4 level subfolder.
+# 8. Sekring Exclude Hidden/Dev Folders -> Mengabaikan folder .git/, node_modules/, .cache/, .venv/, dll.
 # ==============================================================================
 
 WATCH_DIR="$HOME/Downloads"
@@ -36,6 +37,11 @@ inotifywait -r -m -e close_write,moved_to --format '%w%f' "$WATCH_DIR" 2>/dev/nu
     
     # Abaikan file parsial/sementara
     if [[ "$lower_filename" == *.crdownload || "$lower_filename" == *.tmp || "$lower_filename" == *.part || "$lower_filename" == *.~tmp || "$lower_filename" == .*.swp ]]; then
+        continue
+    fi
+
+    # SEKRING 8: Exclude spesifik folder sistem/development (misal .git, node_modules, .cache, .venv)
+    if [[ "$filepath" =~ /(node_modules|\.git|\.venv|venv|\.cache|\.local|\.idea|\.vscode)/ ]]; then
         continue
     fi
 
